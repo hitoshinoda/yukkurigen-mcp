@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.yukkurigen/yukkurigen",
+  "description": "日本語の「ゆっくり解説」動画を作る。台本（話者＋セリフ）を渡すと YMM4 プロジェクト(.ymmp) か MP4 が返る。無料枠あり。",
+  "version": "1.0.0",
+  "websiteUrl": "https://yukkurigen.com",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://app.yukkurigen.com/api/mcp",
+      "headers": [
+        {
+          "name": "Authorization",
+          "description": "Bearer <API key>。鍵は https://app.yukkurigen.com/settings/api-keys で発行する。",
+          "isRequired": true,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

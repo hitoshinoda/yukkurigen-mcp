@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "yukkurigen": {
+      "type": "http",
+      "url": "https://app.yukkurigen.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${YUKKURIGEN_API_KEY}"
+      }
+    }
+  }
+}

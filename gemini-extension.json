@@ -1,0 +1,13 @@
+{
+  "name": "yukkurigen",
+  "version": "1.0.0",
+  "description": "日本語の「ゆっくり解説」動画を作る。台本を渡すと YMM4 プロジェクト(.ymmp) か MP4 が返る。",
+  "mcpServers": {
+    "yukkurigen": {
+      "httpUrl": "https://app.yukkurigen.com/api/mcp",
+      "headers": {
+        "Authorization": "Bearer $YUKKURIGEN_API_KEY"
+      }
+    }
+  }
+}
