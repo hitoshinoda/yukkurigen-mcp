@@ -1,15 +1,17 @@
 # YukkuriGen — ゆっくり動画を作る (Agent Skill)
 
-テーマから「ゆっくり解説/劇場」動画の **YMM4プロジェクト(.ymmp)** を生成するためのスキル。
-あなた（AI）が台本を書き、YukkuriGen が .ymmp に変換してダウンロードURLを返します。
-ユーザーはそれを YMM4 で開いて仕上げ・書き出しできます。
+テーマから「ゆっくり解説/劇場」動画の **MP4** を生成するためのスキル。
+あなた（AI）が台本を書き、YukkuriGen が音声を合成してレンダーし、動画のURLを返します。
+ユーザーはそれをそのまま投稿できます。
 
 ## 接続
 
 - 発行: ユーザーに `https://app.yukkurigen.com/settings/api-keys` でAPIキーを発行してもらう。
   **無料プランでもここまで使える**（無料枠10クレジット）:
-  - `.ymmp` の生成・書き出し（1回3クレジット＝3回ぶん）
-  - **MP4 プレビュー**（`render_mp4` + `preview`。1クレジット・640×360・最大20秒＝10回ぶん）
+  - 台本の作成・読み返し・修正（`create_yukkuri_video` のプロジェクト作成部分、
+    `get_project`、`update_lines`、`generate_audio`）——**すべて消費なし**
+  - **MP4 プレビュー**（`output:"preview"` または `render_mp4` + `preview`。
+    1クレジット・640×360・最大20秒＝10回ぶん）
     ——まず動くものを見せたいときはこれを使う。
   - 本番の MP4 レンダー（全編・本番解像度・5クレジット）だけは有料プラン
     〈スタンダード以上〉または買い切りライセンスが必要。`402 plan_required` が返る
@@ -23,26 +25,23 @@
 |---|---|---|
 | キャラ一覧 | `list_characters` | `GET /api/v1/characters` |
 | 残高確認 | `get_credits` | `GET /api/v1/credits` |
-| 台本→.ymmp を一括生成 | `create_yukkuri_video` | `POST /api/v1/agent/generate` |
+| 台本→MP4 を一括生成 | `create_yukkuri_video` | `POST /api/v1/agent/generate` |
 | 複数本をまとめて作る（最大20） | `create_yukkuri_videos_batch` | `POST /api/v1/agent/generate/batch` |
 | プロジェクト一覧 | `list_projects` | `GET /api/v1/projects` |
 | 台本を読み返す（行番号つき） | `get_project` | `GET /api/v1/projects/{id}` |
 | 指定した行だけ直す | `update_lines` | `PATCH /api/v1/projects/{id}/lines` |
 | 音声を作る（MP4の前に必須） | `generate_audio` | `POST /api/v1/projects/{id}/audio/generate` |
-| 既存プロジェクトを書き出し | `export_ymmp` | `POST /api/v1/projects/{id}/export/ymmp` |
-| 書き出し状態/再DL | `get_export` | `GET /api/v1/exports/{exportId}` |
-| 書き出し一覧（拾い直し） | `list_exports` | `GET /api/v1/exports` |
-| MP4 レンダー開始(非同期) | `render_mp4` | `POST /api/v1/projects/{id}/render` |
+| 見た目の一覧 | `list_templates` | `GET /api/v1/agent/templates` |
+| チャンネルの一覧 | `list_channels` | `GET /api/v1/channels` |
+| 既存プロジェクトを MP4 に | `render_mp4` | `POST /api/v1/projects/{id}/render` |
 | レンダー進捗/出力URL | `get_render` | `GET /api/v1/projects/{id}/render/{renderId}/progress` |
-| 立ち絵/BGMパスの保存・取得 | — | `PUT` / `GET /api/v1/ymm4-assets` |
 | 決済リンクを出す（402のとき） | `create_checkout` | `POST /api/v1/billing/checkout-link` |
 | 支払いが済んだか確認 | `get_checkout` | `GET /api/v1/billing/checkout-link/{sessionId}` |
 
 `list_projects` / `get_project` / `update_lines` / `generate_audio` は**消費なし**。
-確認用プレビュー（`render_mp4` + `preview`）は**1クレジット**。課金は
-書き出し（`export_ymmp` / `create_yukkuri_video`）とレンダー（`render_mp4`）
-だけで起きる。直すこと自体にお金がかからないので、ユーザーが納得するまで
-何度でも直してよい。
+確認用プレビュー（`output:"preview"` / `render_mp4` + `preview`）は**1クレジット**。
+課金はレンダーだけで起きる。直すこと自体にお金がかからないので、ユーザーが
+納得するまで何度でも直してよい。
 
 ## 手順
 
@@ -52,7 +51,20 @@
    - 東北勢: `zundamon`（ずんだもん）, `metan`（四国めたん）, `tsumugi`（春日部つむぎ）, `anko`（あんこもん）
 
    混ぜると `400 cast_mismatch` を返す（課金なし）。応答の `casts` に一座の一覧が入っている。
-   テンプレートは台本から自動で選ぶので、`templateId` は指定しなくてよい。
+
+   **見た目（テンプレート）は人が決める。あなたは選ぶだけ。**
+   `list_templates` で一覧を取り、返った `id` を `templateId` に渡す。
+   利用者が「いつもの見た目で」と言ったら、`list_templates` の `source: "mine"`
+   ——その人がエディタで作ったもの——から選ぶこと。**新しく作ろうとしないこと。**
+   省略すれば台本の話者から自動で選ぶので、指定は必須ではない。
+
+   チャンネル（テーマ・想定視聴者・既定の指示）を使うなら `list_channels` で
+   `id` を取り、`channelId` に渡す。
+
+   **返るのは MP4。** こちらで音声を合成してから本番レンダーを開始し、
+   `renderId` を返す（5クレジット・有料プラン）。**`output:"preview"` なら
+   1クレジット・低解像度・20秒**で、無料プランでも動くものが見られる。
+   どちらも `get_render` でポーリングする。
 2. **台本を書く**: 話者(`speaker`=キャラid)とセリフ(`text`)の配列を作る。掛け合い形式が「ゆっくり」らしい。
    - 漢字の読み間違いを避けたい箇所は `reading`（発音かな）を付ける。
    - 冒頭の挨拶 → 本題（結論→理由→具体例）→ まとめ、の構成が定番。
@@ -64,9 +76,13 @@
    付けると、**背景ごとカメラがその話者に寄る**。立ち絵を消したい行（場面の要約など）は
    `"summary"`。
    **2〜4回に留めること。全行に付けると寄りっぱなしになり、寄りが効かなくなる。**
-   MP4 レンダーにのみ効き、`.ymmp` には現れない。
-5. **生成する**: `create_yukkuri_video`（または `POST /agent/generate`）に `{ output: "ymmp", title, backgroundImageUrl, script }` を渡す。
-6. **受け取る**: `downloadUrl`（24時間有効）を返すので、ユーザーに渡す。期限切れなら `get_export` で再取得。
+   立ち絵が画面に出ている行にだけ効く。
+5. **生成する**: `create_yukkuri_video`（または `POST /agent/generate`）に `{ title, backgroundImageUrl, script }` を渡す。
+   既定で MP4 を焼く。試すだけなら `output: "preview"` を足す（1クレジット・20秒）。
+6. **受け取る**: `renderId` が返るので `get_render` でポーリングする。
+   **完了の判定は `done === true` かつ `outputFile` が非空**（下の「レンダーの成否判定」）。
+   その `outputFile` をユーザーに渡す。`callbackUrl` を渡しておけば、完了時に
+   こちらから通知する（そちらの本文は `downloadUrl`）。
 
 ## 直す（ユーザーと会話しながら）
 
@@ -90,7 +106,7 @@
 5. **出す**: `preview` を付けずに `render_mp4`（5クレジット・全編・本番解像度）。
 
 台本を作り直す（`create_yukkuri_video` をもう一度呼ぶ）のは最後の手段。
-ユーザーが良いと言った行まで消えるうえ、書き出しに3クレジットかかる。
+ユーザーが良いと言った行まで消えるうえ、レンダーにもう一度課金される。
 
 ## MP4 は音声を自動生成しない
 
@@ -99,8 +115,9 @@
 （無音の動画に5クレジット払わせないため）。応答の `missingAudioLines` に対象行が
 入っているので、`generate_audio` を呼んでから再実行する。
 
-`create_yukkuri_video` が作る `.ymmp` にはこの手順は要らない。YMM4 が開いたときに
-音声を作り直すため。**MP4 を出すときだけ** `generate_audio` が必要になる。
+`create_yukkuri_video` は**中で音声まで作る**ので、この手順は要らない。
+`get_project` → `update_lines` で直したあと `render_mp4` を呼ぶときだけ、
+自分で `generate_audio` を挟む必要がある。
 
 ## 最小例（REST）
 
@@ -109,8 +126,8 @@ curl -X POST https://app.yukkurigen.com/api/v1/agent/generate \
   -H "Authorization: Bearer $YUKKURIGEN_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "output": "ymmp",
     "title": "身近な熱力学のはなし",
+    "backgroundImageUrl": "https://example.com/bg.jpg",
     "script": [
       { "speaker": "reimu",  "text": "今日は熱力学第二法則を解説するわ" },
       { "speaker": "marisa", "text": "エントロピーってやつだな" },
@@ -119,65 +136,21 @@ curl -X POST https://app.yukkurigen.com/api/v1/agent/generate \
   }'
 ```
 
-## 立ち絵を付ける（任意）
+## 立ち絵とBGM
 
-既定では音声＋字幕のみ。**動く立ち絵**を付けたい場合は、ユーザー自身のローカル立ち絵フォルダを
-`tachieDirs` で渡す（キャラid → フォルダ。中に 眉/目/口/体 のサブフォルダがある構成）。
+立ち絵は**テンプレートが自動で置く**。キャラを選べば画面に出る——別途の指定は要らない。
 
-```json
-{ "script": [...], "tachieDirs": { "zundamon": "D:\\素材\\ずんだもん" } }
-```
-
-素材はユーザーの環境のものを参照するだけで、こちらから配布はしない。
-
-立ち絵にフォルダ（パーツ方式）を指定する場合、パーツのファイル名は既定で
-`<フォルダ>/<部位>/00.png` を仮定する。実際の配布パックは名前が異なることが多いので
-（例: `眉/02.png`, `口/デフォルト.png`）、分かる場合は `tachieParts` で明示する:
-
-```json
-{
-  "script": [...],
-  "tachieDirs":  { "zundamon": "D:\\pack" },
-  "tachieParts": { "zundamon": { "eyebrow": "D:\\pack\\眉\\02.png",
-                                 "mouth":   "D:\\pack\\口\\デフォルト.png" } }
-}
-```
-
-キーは `eyebrow` / `eye` / `mouth` / `body` / `hair` / `complexion` のみ（他は400）。
-`tachieDirs` / `tachieFaces` / `bgmPath` と同じく `PUT /api/v1/ymm4-assets` に保存でき、
-保存すれば以降の書き出しに自動適用される。
-
-**パスは絶対パスで渡すこと**（`C:\\...` などのドライブパス、または UNC）。
-`/images/...` のようなサイト絶対パスやURLは、YMM4がローカルファイルとして解決できないため
-**無視される**（壊れた「ファイルが無い」クリップを出さないため）。
-
-**表情を切り替えたい場合は、立ち絵を「1枚画像」で指定すること。**
-`tachieFaces`（キャラid → 表情 → 画像パス）＋ 各行の `emotion` で顔が切り替わるが、
-これは立ち絵に**画像ファイル**を指定したキャラにのみ効く。フォルダ（パーツ方式）を
-指定したキャラでは表情指定は無視される。
-
-```json
-{
-  "tachieDirs":  { "zundamon": "D:\\素材\\ずんだもん\\normal.png" },
-  "tachieFaces": { "zundamon": { "angry": "D:\\素材\\ずんだもん\\angry.png" } },
-  "script": [{ "speaker": "zundamon", "text": "むむむ", "emotion": "angry" }]
-}
-```
-
-**一度設定すれば毎回自動で付く**: ユーザーに `PUT /api/v1/ymm4-assets` で
-`{ "tachieDirs": {...}, "bgmPath": "...", "tachieFaces": {...} }` を保存してもらえば、
-以降の書き出しはリクエストで指定しなくても立ち絵とBGMが入る（リクエスト指定が優先）。
-**PUT は全置換**なので、送らなかったキーは消える。部分更新したい場合は先に `GET` して
-マージしてから送ること。
+BGM は既定のものが入る。差し替えたい場合はエディタで設定する
+（`POST /api/v1/projects/{id}/bgm`）。
 
 ## クレジットとエラー
 
-- 消費: `.ymmp` 書き出し = 3、MP4 レンダー = 5、AI台本生成 = 1。
+- 消費: MP4 レンダー = 5、プレビュー = 1、AI台本生成 = 1。台本の作成・修正・音声生成は 0。
 - 不足時: `code: "insufficient_credits"` / `code: "plan_required"`。**諦めずに購入まで案内すること**（下の「支払いが要るとき」）。
 - 権限不足: `code: "insufficient_scope"`。キーのスコープを確認。
 - 認証まわり: `code: "unauthenticated"`（401、キーが無効/失効）、
   `code: "forbidden"`（403、他人のプロジェクトなど対象への権限が無い）、
-  `code: "not_found"`（404、projectId / renderId / exportId が無い）。
+  `code: "not_found"`（404、projectId / renderId が無い）。
   いずれもクレジットは消費されない。
 - 台本を作るとき（`create_yukkuri_video`）: `code: "cast_mismatch"`（400、一座をまたぐ話者。
   声は出るが画面に映らない動画になるため、**課金せずに**中断する。`undrawableSpeakers` と
@@ -231,7 +204,7 @@ curl -X POST https://app.yukkurigen.com/api/v1/agent/generate \
 
 `get_checkout` は支払いの有無を直接返す。**残高の増減から推測しないこと**——
 残高は月次リセットや他の操作でも動く。
-  - `export_failed` / `render_start_failed` … そのまま再試行してよい。
+  - `generate_failed` / `render_start_failed` … そのまま再試行してよい。
     予約したクレジットは返される。ただし返金はサーバ側の後処理なので、
     **応答を受け取った時点の残高には反映されていないことがある**
     （その場での返金が落ちた場合は、後追いの掃除処理が拾う。返金と、
@@ -250,9 +223,8 @@ curl -X POST https://app.yukkurigen.com/api/v1/agent/generate \
   未知のidは課金前に400になる（黙って別キャラや立ち絵なしで出力してクレジットだけ
   消費する、ということはしない）。照合される集合はリクエストによって違う:
   - `POST /agent/generate`: `speaker` はシステムキャラ（`GET /api/v1/characters`）。
-    `tachieDirs` / `tachieFaces` / `tachieParts` のキーは**その台本に出てくる話者**。
-  - `POST /projects/{id}/export/ymmp`: **そのプロジェクトの行が使っている character_id**。
-  - `PUT /ymm4-assets`: システムキャラ ＋ **自分で作ったカスタムキャラ**。
+  - `PATCH /projects/{id}/lines`: **そのプロジェクトの行が使っている character_id**
+    ＋ 自分で作ったカスタムキャラ。
   返ってきた `validSpeakers` をそのまま使えばよい（システムキャラ一覧だけを見て
   判断すると、カスタムキャラを誤って除外する）。
 - レート上限: `code: "rate_limited"` と **`retryAfter`（秒）**、同値の `Retry-After` ヘッダ。その秒数だけ待って再試行する。
@@ -283,7 +255,7 @@ curl -X POST https://app.yukkurigen.com/api/v1/agent/generate \
 
 ## 再投入しても二重課金しない方法
 
-課金される操作（`create_yukkuri_video` / `export_ymmp` / `render_mp4`）には
+課金される操作（`create_yukkuri_video` / `render_mp4`）には
 `Idempotency-Key` ヘッダ（MCP では `idempotencyKey` 引数）を付けられる。
 レンダーは5クレジットと一番高いので、特に付けること。同じ鍵で再投入すると、最初に成功した
 ときの応答がそのまま返り、課金は起きない。有効期間は24時間。
@@ -291,9 +263,9 @@ curl -X POST https://app.yukkurigen.com/api/v1/agent/generate \
 応答を落とした（タイムアウト、接続断、プロセス再起動）ときは、**同じ鍵で
 そのまま投げ直せばよい**。鍵を変えると別の操作として扱われ、もう一度課金される。
 
-鍵を控えていない場合は `list_exports` / `GET /api/v1/exports`（`?projectId=` で
-絞れる）で一覧を取り、`exportId` を拾い直してから `get_export` で
-ダウンロードURLを得る。
+鍵を控えていない場合は `list_projects` でプロジェクトを見つけ、
+`GET /api/v1/projects/renders`（`?projectId=` で絞れる）でそのレンダーの
+`renderId` を拾い直してから `get_render` で出力URLを得る。
 返金済みのものは `status: "failed"` で返る。
 
 同じ鍵の処理がまだ走っている間に投げ直すと `409` と `code: "in_flight"` が返る。
@@ -308,7 +280,7 @@ curl -X POST https://app.yukkurigen.com/api/v1/agent/generate \
 | `409` in_flight | 別のリクエストが保持中 | 少し待って**同じ鍵**で再試行する |
 | `503` unavailable（判定できなかった） | 取られていない | **同じ鍵**でそのまま再試行してよい。課金は起きていない |
 | `503` unavailable（クレジット確保に失敗） | 保持されたまま | **課金されたか確定していない**。`GET /api/v1/credits` で残高を確認し、しばらく置いてから同じ鍵で再試行する（鍵は65分で自然に解ける） |
-| `500` `render_start_failed` / `export_failed` | 解放される | そのまま同じ鍵で再試行してよい。課金分は返金済みか、返金待ちとして記録済み（両方の書き込みが落ちた場合のみサーバログにのみ残る） |
+| `500` `render_start_failed` / `generate_failed` | 解放される | そのまま同じ鍵で再試行してよい。課金分は返金済みか、返金待ちとして記録済み（両方の書き込みが落ちた場合のみサーバログにのみ残る） |
 | `500` `render_incomplete` | 解放される | **すぐに再投入しないこと。** レンダーは開始済みで、走っている／既に出来ている場合がある。同梱の `renderId` で進捗を先に確認する（そのまま投げ直すと、同じ動画をもう一度 5 クレジットで作る） |
 
 クレジット確保の失敗だけ鍵を保持するのは、Firestore のトランザクションが
@@ -406,9 +378,6 @@ MP4 レンダーは数分かかる。`render_mp4` に `callbackUrl` を付ける
 台本以外の指定はすべて任意で、省略すれば既定値になる。openapi.json に
 全項目があるが、よく使うものは:
 
-- `fps`: 30（既定）か 60。**`create_yukkuri_video` と `export_ymmp` だけ**
-  で指定できる（.ymmp 側の設定なので、`render_mp4` には無い——送っても
-  黙って無視され、エラーにもならない）。動きの多い動画は 60 が滑らか。
 - `platform` / `outputFormat`: 縦横と用途（youtube / tiktok / shorts）。
 - `fontSize` / `titleFontSize`: 字幕とタイトルの文字サイズ。
 - `voicePlaybackRate`: 読み上げ速度（0.5〜2.0）。
@@ -421,23 +390,17 @@ MCP のツール定義と openapi は同じ集合を公開している。片方�
 
 ## 注意
 
-- 生成される .ymmp は音声を「YMM4で開いたとき再生成」する前提（軽量）。音声そのものは含まれない。
-- キャラの立ち絵・BGM等の素材は、ユーザーのYMM4環境/ライセンスに依存する場合がある。
-- **.ymmp は実機の YMM4 では未検証**。生成物は自前のスキーマと、公開されている
-  .ymmp から読み取った型名に照らして検査しているが、「実際に YMM4 で開いて
-  再生できた」ことは確認していない。特に次は推定を含む:
-  - VOICEVOX の `Pronounce` は `null` を出し、YMM4 側に読みを再生成させている
-    （その `$type` が公開ファイルに現れないため）。
-  - **AquesTalk（ゆっくり霊夢・魔理沙など）の `VoiceParameter` の型名**は、
-    実際に YMM4 プロジェクトを生成している OSS が出している値と食い違っている。
-    こちらは派生型（`AquesTalk1VoiceParameter`）、向こうは素の
-    `VoiceParameter`。**AquesTalk のキャラを使う場合は特に、まず少数の行で
-    開けるか確かめること。** VOICEVOX のキャラ（ずんだもん等）にはこの
-    食い違いは無い。
-  - 立ち絵は `tachieDirs` を指定したときだけ入る。パーツ画像の命名規約は
-    こちらの想定に基づく。
-  そのため、初回は少数の行で試し、YMM4 で開けることを確かめてから本番の
-  台本を流すこと。開けない場合は生成側の不具合として報告してほしい。
+- **音声はこちらで合成する。** 相手側に YMM4 や VOICEVOX を入れてもらう必要はない。
+- 音声エンジンはキャラごとに決まっている（`list_characters` の `voiceEngine`）。
+  ゆっくり霊夢・魔理沙は AquesTalk、ずんだもん等は VOICEVOX。
+- **初回は `output: "preview"` で試すこと**（1クレジット・20秒）。本番の
+  5クレジットを払う前に、キャラ・背景・カメラが意図どおりか確かめられる。
+- **`create_yukkuri_video` から MP4 まで一息に通す経路は本番未検証**（2026-09-07 時点）。
+  台本の作成・音声の合成・レンダーの各段は個別に動いているが、1コールで
+  最後まで通した実績がまだ無い。**少数の行で試し、`get_render` が
+  `completed` を返すことを確かめてから本番の台本を流すこと。**
+  途中で止まる場合は `get_project` で台本を、`generate_audio` で音声を、
+  `render_mp4` でレンダーを、と段ごとに切り分けられる。不具合として報告してほしい。
 - MP4 の音量は行ごとに測って揃えている（実測 -14.4 LUFS、真のピーク
   -2.0 dBTP）。YouTube の基準（-14 前後）とほぼ同じなので、そのまま
   投稿して音量で不利になることはない。
