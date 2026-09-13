@@ -31,6 +31,10 @@
 | 台本を読み返す（行番号つき） | `get_project` | `GET /api/v1/projects/{id}` |
 | 指定した行だけ直す | `update_lines` | `PATCH /api/v1/projects/{id}/lines` |
 | 音声を作る（MP4の前に必須） | `generate_audio` | `POST /api/v1/projects/{id}/audio/generate` |
+| **焼く前に人へ見せる共有リンク** | `create_preview_link` | `POST /api/v1/projects/{id}/preview-link` |
+| YouTube へ投稿する | `upload_to_youtube` | `POST /api/v1/projects/{id}/upload` |
+| 投稿ジョブの状態 | `get_youtube_upload` | `GET /api/v1/projects/{id}/upload/{jobId}` |
+
 | 見た目の一覧 | `list_templates` | `GET /api/v1/agent/templates` |
 | チャンネルの一覧 | `list_channels` | `GET /api/v1/channels` |
 | 既存プロジェクトを MP4 に | `render_mp4` | `POST /api/v1/projects/{id}/render` |
@@ -38,10 +42,81 @@
 | 決済リンクを出す（402のとき） | `create_checkout` | `POST /api/v1/billing/checkout-link` |
 | 支払いが済んだか確認 | `get_checkout` | `GET /api/v1/billing/checkout-link/{sessionId}` |
 
-`list_projects` / `get_project` / `update_lines` / `generate_audio` は**消費なし**。
+`list_projects` / `get_project` / `update_lines` / `generate_audio` /
+`create_preview_link` は**消費なし**。
 確認用プレビュー（`output:"preview"` / `render_mp4` + `preview`）は**1クレジット**。
 課金はレンダーだけで起きる。直すこと自体にお金がかからないので、ユーザーが
 納得するまで何度でも直してよい。
+
+### 焼く前に、人に見てもらう（消費なし）
+
+**MP4 を焼く前に共有リンクを使うこと。** ログイン不要で開けるURLが返るので、
+そのまま利用者へ渡す。相手はブラウザで**音つき・動く状態**を確認できる
+（動画ファイルは出ない）。
+
+    create_yukkuri_video { output:"draft" }   # 消費なし
+    generate_audio                            # 消費なし
+    （共有リンクを発行して渡す）                # 消費なし
+    （相手の OK を待つ。直したら update_lines → generate_audio。
+      **同じURLがそのまま新しい内容を映す**ので、作り直さなくてよい）
+    render_mp4                                # 5クレジット
+
+**音声を作る前にリンクを渡さないこと**——無音で再生され、確認にならない。
+
+`generate_audio` は**引数なしで呼べる**（音声が無い行すべてが対象）。REST を
+直接叩くときも本文は空 `{}` でよい。特定の行だけ作り直したいときだけ、
+`get_project` が返す行の id を `lineIds` に並べて `force: true` を付ける。
+
+### YouTube へ投稿する（消費なし）
+
+焼き上がったら `upload_to_youtube` で投稿できる。**ただし条件が3つある**:
+
+1. **APIキーに `youtube:upload` スコープが要る。** 既定では付いていない
+   ——403 が返ったら、利用者に付きのキーを発行し直してもらう
+2. プロジェクトに**チャンネルが紐づいている**こと（未分類は不可）
+3. そのチャンネルで **YouTube 連携が済んでいる**こと（未連携なら 400 で理由が返る）
+
+**公開範囲の既定は `private`**（本人しか見られない下書き）。利用者が公開を
+望んでいると確認できたときだけ `public` にすること。投稿は非同期なので、
+返った `jobId` を `get_youtube_upload` で追う。`completed` になれば
+`videoId` が入る。
+
+リンクは既定7日で切れる（最大30日）。渡す相手を間違えたら `revoke: true` を
+付けて作り直す。**以前配ったURLは全部開けなくなる。**
+
+なお、プレビューはブラウザで組み立てて再生している。書き出す側とは
+プログラムの配布経路が違うので、**細部は完全に同一ではない**。最終的な
+見た目は書き出した MP4 で確かめること。
+
+### 応答が返らないときのために（重要）
+
+`create_yukkuri_video` の `mp4` / `preview` は、**音声合成とレンダー開始を
+待ってから返る**。10行の台本で45秒を超えることがあり、クライアントによっては
+そこで切れる。切れても**サーバ側では課金もレンダーも進んでいる**ので、
+何もせず投げ直すと二重に払うことになる。
+
+- **`idempotencyKey` を必ず付ける。** 同じ鍵で投げ直せば、最初の結果が返り
+  課金は起きない。処理中なら「進行中」と返るので少し待って同じ鍵で再試行する
+- タイムアウトが心配なら **`output:"draft"` で刻む**:
+
+      create_yukkuri_video { output:"draft" }   # 消費なし・数秒で返る
+      generate_audio                            # 消費なし
+      render_mp4                                # ここで初めて5クレジット
+      get_render                                # 完了までポーリング
+
+  1回あたりが短くなるので切れない。`draft` は `projects:write` だけで通る
+  （`render:mp4` は要らない）。
+
+### 縦型で作りたいとき
+
+`create_yukkuri_video` の `platform` に `shorts`（または `tiktok`）を渡す。
+既定は `youtube`（横型）。`render_mp4` にも同じ引数がある。
+
+### 見た目の既定はチャンネルに置ける
+
+文字サイズ・素材フィルター・エンディングカードは、チャンネルの設定画面
+（`/channels/{id}` の「設定」タブ）で既定を決められる。1本だけ変えたいときは
+`render_mp4` の引数が優先される（**リクエスト > プロジェクト > チャンネル**）。
 
 ## 手順
 
@@ -54,9 +129,15 @@
 
    **見た目（テンプレート）は人が決める。あなたは選ぶだけ。**
    `list_templates` で一覧を取り、返った `id` を `templateId` に渡す。
-   利用者が「いつもの見た目で」と言ったら、`list_templates` の `source: "mine"`
-   ——その人がエディタで作ったもの——から選ぶこと。**新しく作ろうとしないこと。**
+   `source: "system"`（5種）と `source: "mine"`（その人がエディタで作ったもの）の
+   **どちらの id もそのまま渡してよい**。利用者が「いつもの見た目で」と言ったら
+   `source: "mine"` から選ぶこと。**新しく作ろうとしないこと。**
    省略すれば台本の話者から自動で選ぶので、指定は必須ではない。
+
+   存在しない id や他人のテンプレートを渡すと `400 template_not_found` を返す
+   （課金なし）。**黙って別の見た目で焼くことはしない**——2026-09-09 まではそう
+   なっていて、自作テンプレートを指定しても `line-scroll`（スポーツ反応集）で
+   焼かれていた。
 
    チャンネル（テーマ・想定視聴者・既定の指示）を使うなら `list_channels` で
    `id` を取り、`channelId` に渡す。
@@ -255,10 +336,13 @@ BGM は既定のものが入る。差し替えたい場合はエディタで設�
 
 ## 再投入しても二重課金しない方法
 
-課金される操作（`create_yukkuri_video` / `render_mp4`）には
-`Idempotency-Key` ヘッダ（MCP では `idempotencyKey` 引数）を付けられる。
-レンダーは5クレジットと一番高いので、特に付けること。同じ鍵で再投入すると、最初に成功した
-ときの応答がそのまま返り、課金は起きない。有効期間は24時間。
+課金される操作（`create_yukkuri_video` / `render_mp4`）には冪等キーを付けられる。
+**ヘッダ（`Idempotency-Key`）でも本文（`idempotencyKey`）でもよい**——MCP の引数名で
+本文に入れても効く。レンダーは5クレジットと一番高いので、特に付けること。同じ鍵で
+再投入すると、最初に成功したときの応答がそのまま返り、課金は起きない。有効期間は24時間。
+
+（2026-09-09 まで、REST を直接叩いて**本文に**入れた鍵は黙って捨てられていた。
+応答が遅くて投げ直すと、同じ鍵なのにプロジェクトが2本でき、2回課金された。）
 
 応答を落とした（タイムアウト、接続断、プロセス再起動）ときは、**同じ鍵で
 そのまま投げ直せばよい**。鍵を変えると別の操作として扱われ、もう一度課金される。
@@ -363,7 +447,7 @@ MP4 レンダーは数分かかる。`render_mp4` に `callbackUrl` を付ける
 注意:
 
 - 通知は**1回しか送らない**（届いたことは確認しない）。受け取り損ねたときは
-  `list_renders`（`GET /api/v1/projects/renders`）で拾い直せる。
+  `GET /api/v1/projects/renders`（REST のみ。MCP ツールは無い）で拾い直せる。
 - 転送（3xx）には従わない。宛先はリダイレクトさせず直接受けること。
 - 通知が送れない状態のときは `code: "callback_unavailable"`（503、課金なし）。
   `callbackUrl` を外して投げ直し、`get_render` で待つこと。

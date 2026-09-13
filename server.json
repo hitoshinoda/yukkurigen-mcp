@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "com.yukkurigen/yukkurigen",
-  "description": "日本語の「ゆっくり解説」動画を作る。台本（話者＋セリフ）を渡すと MP4 またはプレビューが返る。無料枠あり。",
+  "description": "台本（話者＋セリフの配列）を渡すと、日本語の「ゆっくり解説」動画（MP4）が返る。音声の合成からレンダーまでサーバ側で行う。REST と MCP の両方から呼べる。",
   "repository": {
     "url": "https://github.com/yukkurigen/yukkurigen-mcp",
     "source": "github",

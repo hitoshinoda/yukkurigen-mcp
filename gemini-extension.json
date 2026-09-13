@@ -1,7 +1,7 @@
 {
   "name": "yukkurigen",
   "version": "1.0.0",
-  "description": "日本語の「ゆっくり解説」動画を作る。台本を渡すと MP4 またはプレビューが返る。",
+  "description": "台本（話者＋セリフの配列）を渡すと、日本語の「ゆっくり解説」動画（MP4）が返る。音声の合成からレンダーまでサーバ側で行う。REST と MCP の両方から呼べる。",
   "mcpServers": {
     "yukkurigen": {
       "httpUrl": "https://app.yukkurigen.com/api/mcp",
