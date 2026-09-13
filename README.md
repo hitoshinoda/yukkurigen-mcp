@@ -51,7 +51,7 @@ export YUKKURIGEN_API_KEY=yg_live_...
 
 ```bash
 export YUKKURIGEN_API_KEY=yg_live_...
-gemini extensions install https://github.com/hitoshinoda/yukkurigen-mcp
+gemini extensions install https://github.com/yukkurigen/yukkurigen-mcp
 ```
 
 このリポジトリの `gemini-extension.json` が読まれる。鍵は環境変数から読むので、

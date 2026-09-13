@@ -3,7 +3,7 @@
   "name": "com.yukkurigen/yukkurigen",
   "description": "日本語の「ゆっくり解説」動画を作る。台本（話者＋セリフ）を渡すと MP4 またはプレビューが返る。無料枠あり。",
   "repository": {
-    "url": "https://github.com/hitoshinoda/yukkurigen-mcp",
+    "url": "https://github.com/yukkurigen/yukkurigen-mcp",
     "source": "github",
     "id": "1359133051"
   },
